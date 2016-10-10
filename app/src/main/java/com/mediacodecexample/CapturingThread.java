@@ -43,6 +43,7 @@ public class CapturingThread extends Thread {
 
         int muxerTrack = -1;
         boolean done = false;
+        ByteBuffer bitmapCopyBuffer = ByteBuffer.allocate(MainActivity.TEX_WIDTH*MainActivity.TEX_HEIGHT*4);
         while (!done) {
             Log.i("debug", "going to sleep.");
             try {
@@ -61,22 +62,25 @@ public class CapturingThread extends Thread {
 
                 ByteBuffer buffer = inputBuffers[bufferIndex];
                 buffer.clear();
+                bitmapCopyBuffer.clear();
 
-                Bitmap bitmap = Bitmap.createBitmap(MainActivity.TEX_WIDTH, MainActivity.TEX_HEIGHT, Bitmap.Config.ALPHA_8);
+                Bitmap bitmap = Bitmap.createBitmap(MainActivity.TEX_WIDTH, MainActivity.TEX_HEIGHT, Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(bitmap);
 
                 cl.draw(canvas);
 
                 Log.i("debug", "Bitmap size: " + bitmap.getWidth() + "x" + bitmap.getHeight() + " (=" + bitmap.getByteCount() + " bytes) (buffer size: " + buffer.limit() + ")");
-                bitmap.copyPixelsToBuffer(buffer);
+                bitmap.copyPixelsToBuffer(bitmapCopyBuffer);
                 //bitmap.recycle();
+                convertRGBAtoYUV420P(bitmapCopyBuffer, buffer, MainActivity.TEX_WIDTH, MainActivity.TEX_HEIGHT);
 
                 encoder.queueInputBuffer(
                         bufferIndex,
                         0,
                         //bitmap.getByteCount(),
-                        bitmap.getAllocationByteCount(),
+                        //bitmap.getAllocationByteCount(),
                         //buffer.limit(),
+                        (int)(MainActivity.TEX_WIDTH * MainActivity.TEX_HEIGHT * 1.5),
                         computePresentationTime(frameCounter),
                         frameCounter == (NO_FRAMES - 1) ? BUFFER_FLAG_END_OF_STREAM : BUFFER_FLAG_KEY_FRAME
                 );
@@ -145,6 +149,47 @@ public class CapturingThread extends Thread {
         muxer.release();
         encoder.stop();
         encoder.release();
+    }
+
+    private int convertRGBAtoYUV420P(ByteBuffer rgba, ByteBuffer yuv, int width, int height) {
+        final int frameSize = width * height;
+        final int chromasize = frameSize / 4;
+
+        int byteCounter = 0;
+
+        int yIndex = 0;
+        int uIndex = frameSize;
+        int vIndex = frameSize + chromasize;
+
+        int R, G, B, Y, U, V;
+        int index = 0;
+
+        int rgbaIndex = 0;
+
+        for (int j = 0; j < height; j++) {
+            for (int i = 0; i < width; i++) {
+                R = rgba.get(rgbaIndex++) & 0xff; // My rgba bytes are -128 to 127
+                G = rgba.get(rgbaIndex++) & 0xff;
+                B = rgba.get(rgbaIndex++) & 0xff;
+                rgbaIndex++; // skip A
+
+                Y = ((66 * R + 129 * G + 25 * B + 128) >> 8) + 16;
+                U = ((-38 * R - 74 * G + 112 * B + 128) >> 8) + 128;
+                V = ((112 * R - 94 * G - 18 * B + 128) >> 8) + 128;
+
+                yuv.put(yIndex++, (byte) ((Y < 0) ? 0 : ((Y > 255) ? 255 : Y)));
+                byteCounter++;
+
+                if (j % 2 == 0 && index % 2 == 0) {
+                    yuv.put(uIndex++, (byte) ((Y < 0) ? 0 : ((U > 255) ? 255 : U)));
+                    yuv.put(vIndex++, (byte) ((Y < 0) ? 0 : ((V > 255) ? 255 : V)));
+                    byteCounter+=2;
+                }
+
+                index++;
+            }
+        }
+        return byteCounter;
     }
 
     /**

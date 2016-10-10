@@ -11,12 +11,13 @@ import android.util.Log;
 
 import java.io.IOException;
 
+import android.view.View;
 import android.widget.LinearLayout;
 
 public class MainActivity extends AppCompatActivity {
 
-    public static final int TEX_WIDTH = 960;
-    public static final int TEX_HEIGHT = 540;
+    public static final int TEX_WIDTH = 1280;
+    public static final int TEX_HEIGHT = 720;
 
     private static final String OUTPUT_VIDEO_MIME_TYPE = "video/avc"; // H.264 Advanced Video Coding
     private static final String VIDEO_PATH = "/storage/emulated/0/video.mp4";
@@ -84,6 +85,10 @@ public class MainActivity extends AppCompatActivity {
 
         /* STARTING CAPTURING THREAD */
         (new CapturingThread(cl, encoder, muxer)).start();
+    }
+
+    public void startCapturing(View v) {
+
     }
 
     private void printCodecs() {
